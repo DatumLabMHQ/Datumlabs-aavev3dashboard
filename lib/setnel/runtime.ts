@@ -31,6 +31,10 @@ export type DetectorEvent = {
   // Deep-link path within this dashboard, e.g. `/markets/USDT`.
   linkPath?: string;
   payload?: Record<string, unknown>;
+  // Override the detector's default severity for this one event. A rule that can
+  // fire on both a dangerous and a harmless case sets it per event rather than
+  // pushing every instance out at the detector's level.
+  severity?: Severity;
 };
 
 export type Detector<T = unknown> = {
@@ -84,7 +88,7 @@ export async function runDetectors(opts: RunOptions): Promise<RunReport> {
       const data = await d.source();
       const events = await d.detect(data);
       for (const e of events) {
-        batch.push({ ...e, detectorId: d.id, category: d.category, severity: d.severity });
+        batch.push({ ...e, detectorId: d.id, category: d.category, severity: e.severity ?? d.severity });
       }
       if (d.sample) {
         const s = d.sample(data);

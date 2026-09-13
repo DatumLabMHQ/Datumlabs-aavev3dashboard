@@ -7,7 +7,7 @@
 // comparison. Percent-change rules ("TVL dropped 15%") are still handled by the
 // central datum-monitor until snapshot support lands in the kit.
 
-import { defineDetector } from './runtime';
+import { defineDetector, type DetectorEvent } from './runtime';
 
 // Base URL to call this dashboard's own API routes from the cron runtime.
 function baseUrl(): string {
@@ -46,8 +46,18 @@ const STABLES = new Set([
   'USDC', 'USDT', 'DAI', 'USDS', 'GHO', 'FRAX', 'LUSD', 'sUSD', 'USDe',
   'PYUSD', 'USDC.e', 'crvUSD', 'USD₮0', 'USDtb', 'RLUSD', 'USDbC',
 ]);
-// Ignore normal drift; a true $1 stable beyond this is a real depeg signal.
-const DEPEG_PCT = 1;
+// Stablecoin depeg bands. Only BELOW peg threatens the protocol: collateral worth
+// less than Aave assumes it is. Above peg is information and never pages. Assets
+// with a designed trading band get their own; LUSD has a hard $1.00 floor
+// (redeemable 1:1 for collateral) and a soft ceiling near $1.10 (the 110% minimum
+// collateral ratio), so $1.01 is LUSD working as built. The old symmetric 1% band
+// read that as critical and paged 289 times in 24h on 2026-09-13.
+const DEPEG_BAND = { low: 0.98, high: 1.03 };
+const DEPEG_BANDS: Record<string, { low: number; high: number }> = {
+  LUSD: { low: 0.98, high: 1.12 },
+};
+// Below peg pages only on exposure that would actually hurt.
+const DEPEG_CRITICAL_EXPOSURE_USD = 10_000_000;
 
 // Aave chain key → DeFiLlama coins chain slug (most match; map the exceptions).
 const LLAMA_CHAIN: Record<string, string> = {
@@ -330,9 +340,15 @@ defineDetector<Overview>({
   },
   detect: (o) => {
     const rh = o.revenueHistory;
-    if (!rh || rh.length < 8) return [];
-    const latest = rh[rh.length - 1].protocolRevenue;
-    const prior7 = rh.slice(-8, -1).map((d) => d.protocolRevenue);
+    if (!rh || rh.length < 9) return [];
+    // The series carries today, which is still accumulating: at 04:00 UTC a normal
+    // day looks like a 97% collapse against a full-day average. Compare complete
+    // days only. (2026-09-13: this fired 20 times, then resolved itself by evening.)
+    const today = new Date().toISOString().slice(0, 10);
+    const complete = rh[rh.length - 1]?.date === today ? rh.slice(0, -1) : rh;
+    if (complete.length < 8) return [];
+    const latest = complete[complete.length - 1].protocolRevenue;
+    const prior7 = complete.slice(-8, -1).map((d) => d.protocolRevenue);
     const baseline = avg(prior7);
     if (baseline > 0 && latest < baseline * 0.5) {
       return [
@@ -389,15 +405,15 @@ defineDetector<Markets>({
 //     Uses the price Aave itself reads, so it reflects what the protocol sees.
 defineDetector<Markets>({
   id: 'aave.stablecoin-depeg',
-  label: 'Stablecoin price deviates from $1',
+  label: 'Stablecoin price below its peg band',
   category: 'depegging',
-  severity: 'critical',
+  severity: 'warning', // below peg at size upgrades itself to critical, per event
   source: async () => {
     const r = await fetch(`${baseUrl()}/api/aave/markets?pageSize=500`, { cache: 'no-store' });
     return r.json();
   },
   detect: (m) => {
-    const events = [];
+    const events: DetectorEvent[] = [];
     const seen = new Set<string>();
     for (const x of m.markets ?? []) {
       const sym = x.inputToken?.symbol;
@@ -408,14 +424,16 @@ defineDetector<Markets>({
       if (seen.has(key)) continue;
       seen.add(key);
       const devPct = (price - 1) * 100;
-      if (Math.abs(devPct) > DEPEG_PCT) {
-        events.push({
-          message: `${sym} on ${x.chain} at $${price.toFixed(4)} (${devPct > 0 ? '+' : ''}${devPct.toFixed(2)}% off peg)`,
-          fingerprint: `aave.depeg:${key}`,
-          linkPath: '/',
-          payload: { symbol: sym, chain: x.chain, price, devPct, exposureUsd: tvl },
-        });
-      }
+      const band = DEPEG_BANDS[sym] ?? DEPEG_BAND;
+      if (price >= band.low && price <= band.high) continue;
+      const below = price < band.low;
+      events.push({
+        message: `${sym} on ${x.chain} at $${price.toFixed(4)} (${Math.abs(devPct).toFixed(2)}% ${below ? 'below' : 'above'} peg, $${fmtM(tvl)} supplied)`,
+        fingerprint: `aave.depeg:${key}:${below ? 'below' : 'above'}`,
+        linkPath: '/',
+        severity: below && tvl >= DEPEG_CRITICAL_EXPOSURE_USD ? 'critical' : 'warning',
+        payload: { symbol: sym, chain: x.chain, price, devPct, band, direction: below ? 'below' : 'above', exposureUsd: tvl },
+      });
     }
     return events;
   },
