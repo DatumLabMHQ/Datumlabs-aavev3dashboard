@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import './../../../../lib/setnel/detectors'; // registers detectors via side-effect
+import { setSelfUrl } from '@/lib/setnel/detectors'; // also registers detectors via side-effect
 import { runDetectors } from '@/lib/setnel/runtime';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 
 // GET /api/setnel/cron
 // Runs this dashboard's detectors and posts results to the Setnel Hub.
-// Triggered by Vercel cron (see vercel.json) or an external pinger every 5 min.
+// Triggered by datum-scheduler (Cloudflare cron worker) or an external pinger.
 // Optionally protect with CRON_SECRET: send `?key=<secret>`.
 export async function GET(req: Request) {
   const cronSecret = process.env.SETNEL_CRON_SECRET;
@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     );
   }
 
+  setSelfUrl(new URL(req.url).origin);
   const report = await runDetectors({ dashboardId: 'aave', hubUrl, secret });
   return NextResponse.json(report);
 }

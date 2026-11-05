@@ -118,13 +118,17 @@ aave-dashboard/
 
 ## 🚀 Deployment
 
-### Deploy to Vercel (Recommended)
+### Deploy to Cloudflare Workers
 
-1. Push your code to GitHub
-2. Visit https://vercel.com
-3. Import your repository
-4. Add environment variables in Vercel dashboard
-5. Deploy!
+The app runs on Cloudflare Workers via [vinext](https://github.com/cloudflare/vinext).
+`cloudflare.config.ts` is the Worker config.
+
+1. `npx cf auth login` (in CI, set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`)
+2. Set the environment variables as Worker secrets/vars. `NEXT_PUBLIC_*` values are inlined at build time, so they must also be present in the build environment.
+3. `npm run deploy`
+
+`npm run preview` runs the built Worker locally in workerd. The Setnel cron
+(`/api/setnel/cron`) is called by `datum-scheduler`.
 
 ## 📊 Data Sources
 

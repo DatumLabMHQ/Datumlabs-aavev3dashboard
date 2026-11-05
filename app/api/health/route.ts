@@ -11,8 +11,7 @@ export async function GET() {
     status: 'ok',
     service: 'aave-dashboard',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
     nodeVersion: process.version,
-    commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    commit: process.env.GIT_COMMIT_SHA ?? null,
   });
 }
