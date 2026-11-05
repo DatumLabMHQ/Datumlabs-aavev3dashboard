@@ -124,8 +124,10 @@ The app runs on Cloudflare Workers via [vinext](https://github.com/cloudflare/vi
 `cloudflare.config.ts` is the Worker config.
 
 1. `npx cf auth login` (in CI, set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`)
-2. Set the environment variables as Worker secrets/vars. `NEXT_PUBLIC_*` values are inlined at build time, so they must also be present in the build environment.
-3. `npm run deploy`
+2. Plain settings live in `cloudflare.config.ts`. Set secrets with `./scripts/set-secrets.sh` (prompts for each value).
+3. `NEXT_PUBLIC_AAVE_API_URL=https://api.v3.aave.com/graphql npm run deploy` (`NEXT_PUBLIC_*` values are read at build time)
+
+Live: https://datumlabs-aavev3dashboard.datumlabs.workers.dev
 
 `npm run preview` runs the built Worker locally in workerd. The Setnel cron
 (`/api/setnel/cron`) is called by `datum-scheduler`.
