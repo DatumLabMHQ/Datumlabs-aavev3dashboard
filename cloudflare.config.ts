@@ -14,6 +14,7 @@ export default defineConfig({
     },
     env: {
       ASSETS: bindings.assets(),
+      SETNEL_HUB_URL: bindings.text("https://setnel-hub.datumlabs.workers.dev"),
       // Plain (non-secret) settings. Secrets (THEGRAPH key, BEEHIIV_*, SETNEL_*) are set
       // as Worker secrets, not here.
       NEXT_PUBLIC_AAVE_API_URL: bindings.text("https://api.v3.aave.com/graphql"),
